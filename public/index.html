@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Кафе "Вкусно" — Доставка еды</title>
+    <!-- Подключаем CSS из отдельного файла -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Шапка сайта -->
+        <header>
+            <h1>Гусь & Лебедь</h1>
+            <div id="user-info">Войдите, чтобы заказать</div>
+        </header>
+
+        <!-- Навигация -->
+        
+        <nav class="nav" id="nav">
+            <button onclick="showPage('menu')" class="nav-btn active">Меню</button>
+            <button onclick="showPage('cart')" class="nav-btn">Корзина (<span id="cart-count">0</span>)</button>
+            <button onclick="showPage('orders')" class="nav-btn">Мои заказы</button>
+            <button onclick="showPage('operator')" class="nav-btn hidden" id="operator-btn">Оператор</button>
+            <button onclick="showPage('courier')" class="nav-btn hidden" id="courier-btn">Курьер</button>
+            <button onclick="showPage('admin')" class="nav-btn hidden" id="admin-btn">Админ</button>
+            <button onclick="showPage('login')" class="nav-btn" id="login-btn">Вход</button>
+        </nav>
+
+        <!-- Страница МЕНЮ -->
+        <section id="page-menu" class="page">
+            <!-- Фильтр по категориям -->
+            <div class="categories" id="categories"></div>
+            
+            <!-- Поиск -->
+            <input type="text" id="search" class="search-input" placeholder="🔍 Поиск блюд..." oninput="loadMenu()">
+            
+            <!-- Сетка блюд -->
+            <div class="menu-grid" id="menu-items"></div>
+        </section>
+
+        <!-- Страница КОРЗИНА -->
+        <section id="page-cart" class="page hidden">
+            <h2>🛒 Корзина</h2>
+            <div id="cart-items" class="cart-list"></div>
+            <div id="cart-empty" class="empty-message">Корзина пуста</div>
+            
+            <div class="cart-summary">
+                <div class="total" id="cart-total">Итого: 0 ₽</div>
+                
+                <div class="form-group">
+                    <label>📍 Адрес доставки:</label>
+                    <input type="text" id="order-address" placeholder="ул. Ленина, д. 1, кв. 5">
+                </div>
+                
+                <div class="form-group">
+                    <label>📞 Телефон:</label>
+                    <input type="text" id="order-phone" placeholder="+7 (999) 123-45-67">
+                </div>
+                
+                <button class="btn btn-primary" onclick="createOrder()">Оформить заказ</button>
+            </div>
+        </section>
+
+        <!-- Страница ЗАКАЗЫ -->
+        <section id="page-orders" class="page hidden">
+            <h2>📋 Мои заказы</h2>
+            <div id="orders-list"></div>
+            <div id="orders-empty" class="empty-message">У вас пока нет заказов</div>
+        </section>
+
+        <!-- Страница ВХОД -->
+        <section id="page-login" class="page hidden">
+            <div class="auth-box">
+                <h2>Вход</h2>
+                <div class="form-group">
+                    <label>Телефон:</label>
+                    <input type="text" id="login-phone" placeholder="admin">
+                </div>
+                <div class="form-group">
+                    <label>Пароль:</label>
+                    <input type="password" id="login-password" placeholder="admin123">
+                </div>
+                <button class="btn btn-primary" onclick="login()">Войти</button>
+                <p class="auth-link">Нет аккаунта? <a href="#" onclick="showPage('register')">Регистрация</a></p>
+            </div>
+        </section>
+
+        <!-- Страница РЕГИСТРАЦИЯ -->
+        <section id="page-register" class="page hidden">
+            <div class="auth-box">
+                <h2>Регистрация</h2>
+                <div class="form-group">
+                    <label>Имя:</label>
+                    <input type="text" id="reg-name" placeholder="Иван">
+                </div>
+                <div class="form-group">
+                    <label>Телефон:</label>
+                    <input type="text" id="reg-phone" placeholder="+79991234567">
+                </div>
+                <div class="form-group">
+                    <label>Пароль:</label>
+                    <input type="password" id="reg-password" placeholder="минимум 6 символов">
+                </div>
+                <button class="btn btn-primary" onclick="register()">Зарегистрироваться</button>
+                <p class="auth-link">Уже есть аккаунт? <a href="#" onclick="showPage('login')">Войти</a></p>
+            </div>
+        </section>
+
+                <!-- Страница АДМИН-ПАНЕЛЬ -->
+        <section id="page-admin" class="page hidden">
+            <h2>⚙️ Админ-панель</h2>
+            
+            <!-- DASHBOARD — 3 цифры -->
+            <div class="dashboard-grid" id="dashboard-stats">
+                <div class="dashboard-card">
+                    <div class="dashboard-icon">📦</div>
+                    <div class="dashboard-number" id="dash-orders">0</div>
+                    <div class="dashboard-label">Всего заказов</div>
+                </div>
+                <div class="dashboard-card">
+                    <div class="dashboard-icon">💰</div>
+                    <div class="dashboard-number" id="dash-revenue">0 ₽</div>
+                    <div class="dashboard-label">Выручка (доставлено)</div>
+                </div>
+                <div class="dashboard-card">
+                    <div class="dashboard-icon">🍽️</div>
+                    <div class="dashboard-number" id="dash-menu">0</div>
+                    <div class="dashboard-label">Блюд в меню</div>
+                </div>
+            </div>
+            
+            <!-- Вкладки админа -->
+            <div class="admin-tabs">
+                <button class="tab-btn active" onclick="showAdminTab('dishes')">🍽️ Блюда</button>
+                <button class="tab-btn" onclick="showAdminTab('categories')">📁 Категории</button>
+            </div>
+            
+            <!-- Вкладка: Блюда -->
+            <div id="admin-tab-dishes" class="admin-tab-content">
+                <div class="admin-section">
+                    <h3>➕ Добавить блюдо</h3>
+                    <div class="form-group">
+                        <label>Название:</label>
+                        <input type="text" id="admin-name" placeholder="Новое блюдо">
+                    </div>
+                    <div class="form-group">
+                        <label>Описание:</label>
+                        <input type="text" id="admin-desc" placeholder="Описание">
+                    </div>
+                    <div class="form-group">
+                        <label>Цена:</label>
+                        <input type="number" id="admin-price" placeholder="450">
+                    </div>
+                    <div class="form-group">
+                        <label>Категория:</label>
+                        <select id="admin-category"></select>
+                    </div>
+                    <div class="form-group">
+                        <label>🖼️ Картинка:</label>
+                        <input type="file" id="admin-image" accept="image/*" onchange="previewImage(this)">
+                        <div id="image-preview" class="image-preview"></div>
+                    </div>
+                    <button class="btn btn-primary" onclick="addDish()">Добавить блюдо</button>
+                </div>
+                
+                <div class="admin-section">
+                    <h3>📋 Все блюда</h3>
+                    <div id="admin-menu-list"></div>
+                </div>
+            </div>
+            
+            <!-- Вкладка: Категории -->
+            <div id="admin-tab-categories" class="admin-tab-content hidden">
+                <div class="admin-section">
+                    <h3>➕ Новая категория</h3>
+                    <div class="form-group">
+                        <label>Название категории:</label>
+                        <input type="text" id="new-category-name" placeholder="Например: Супы">
+                    </div>
+                    <div class="form-group">
+                        <label>Порядок сортировки:</label>
+                        <input type="number" id="new-category-sort" placeholder="0" value="0">
+                    </div>
+                    <button class="btn btn-primary" onclick="addCategory()">Создать категорию</button>
+                </div>
+                
+                <div class="admin-section">
+                    <h3>📋 Все категории</h3>
+                    <div id="admin-categories-list"></div>
+                </div>
+            </div>
+        </section>
+        
+                <!-- Страница ОПЕРАТОР -->
+        <section id="page-operator" class="page hidden">
+                <h2>👨‍🍳 Панель оператора</h2>
+                
+                <!-- Фильтр по статусу -->
+                <div class="operator-filters">
+                    <button class="filter-btn active" onclick="filterOrders('all')">Все</button>
+                    <button class="filter-btn" onclick="filterOrders('new')">Новые</button>
+                    <button class="filter-btn" onclick="filterOrders('cooking')">Готовятся</button>
+                    <button class="filter-btn" onclick="filterOrders('on_the_way')">В пути</button>
+                    <button class="filter-btn" onclick="filterOrders('delivered')">Доставлены</button>
+                </div>
+                
+                <!-- Список заказов -->
+                <div id="operator-orders-list"></div>
+        </section>
+        
+                <!-- Страница КУРЬЕР -->
+        <section id="page-courier" class="page hidden">
+            <h2>🛵 Панель курьера</h2>
+            
+            <!-- Сводка курьера (Dashboard) -->
+            <div class="dashboard-grid" id="courier-dashboard">
+                <div class="dashboard-card">
+                    <div class="dashboard-icon">💰</div>
+                    <div class="dashboard-number" id="courier-earned">0 ₽</div>
+                    <div class="dashboard-label">Всего заработано</div>
+                </div>
+                <div class="dashboard-card">
+                    <div class="dashboard-icon">📦</div>
+                    <div class="dashboard-number" id="courier-delivered">0</div>
+                    <div class="dashboard-label">Доставлено заказов</div>
+                </div>
+                <div class="dashboard-card">
+                    <div class="dashboard-icon">🚚</div>
+                    <div class="dashboard-number" id="courier-onway">0</div>
+                    <div class="dashboard-label">В пути сейчас</div>
+                </div>
+            </div>
+            
+            <!-- Уведомления для курьера -->
+            <div id="courier-notifications" class="courier-notifications hidden">
+                <div class="notification-box">
+                    <h3>🔔 Новое уведомление</h3>
+                    <p id="courier-notif-text"></p>
+                    <button class="btn btn-primary" onclick="hideCourierNotification()">Понятно</button>
+                </div>
+            </div>
+            
+            <!-- Активные заказы (в пути) -->
+            <div class="admin-section">
+                <h3>🚚 Активные доставки</h3>
+                <div id="courier-active-orders"></div>
+                <div id="courier-no-active" class="empty-message">Нет активных доставок</div>
+            </div>
+            
+            <!-- История доставок -->
+            <div class="admin-section">
+                <h3>📋 История доставок</h3>
+                <div id="courier-history"></div>
+                <div id="courier-no-history" class="empty-message">История пуста</div>
+            </div>
+        </section>
+
+
+
+    </div>
+
+    <!-- Подключаем JavaScript из отдельного файла -->
+    <script src="app.js"></script>
+</body>
+</html>
