@@ -68,6 +68,7 @@ setTimeout(() => {
             console.log('   Админ:     phone=admin,     password=admin123');
             console.log('   Оператор:  phone=operator,  password=operator123');
             console.log('   Клиент:    phone=client,    password=client123');
+            console.log('   Курьер:    phone=courier,   password=courier123');
             
             db.close();
         }, 500);

@@ -46,37 +46,184 @@ header h1 {
 
 /* ==================== НАВИГАЦИЯ ==================== */
 
-.nav {
+.main-nav {
     display: flex;
+    justify-content: space-between;
+    align-items: center;
     gap: 10px;
     margin-bottom: 25px;
     flex-wrap: wrap;
+    background: #ffffff;
+    padding: 10px;
+    border-radius: 15px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+}
+
+.nav-group {
+    display: flex;
+    gap: 8px;
+    align-items: center;
 }
 
 .nav-btn {
-    padding: 12px 24px;
+    padding: 10px 18px;
     border: none;
-    background: #ffffff;            /* Белые кнопки */
-    color: #2d2d2d;               /* Тёмно-серый текст */
+    background: transparent;
+    color: #2d2d2d;
     border-radius: 10px;
     cursor: pointer;
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 500;
     font-family: 'Montserrat', sans-serif;
     transition: all 0.3s;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.08);
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
 .nav-btn:hover {
-    background: #5d4037;          /* Коричневый при наведении */
-    color: #f5f0eb;               /* Бежевый текст */
-    transform: translateY(-2px);
+    background: #f5f0eb;
+    color: #1a3c34;
 }
 
 .nav-btn.active {
-    background: #5d4037;          /* Коричневый активная */
+    background: #1a3c34;
     color: #f5f0eb;
-    box-shadow: 0 4px 12px rgba(93, 64, 55, 0.4);
+}
+
+.nav-icon {
+    font-size: 16px;
+}
+
+.nav-badge {
+    background: #5d4037;
+    color: #f5f0eb;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+/* Выпадающее меню персонала */
+
+.dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.dropdown-toggle {
+    background: #5d4037;
+    color: #f5f0eb;
+}
+
+.dropdown-toggle:hover {
+    background: #4a3329;
+}
+
+.arrow {
+    font-size: 10px;
+    margin-left: 4px;
+    transition: transform 0.3s;
+}
+
+.dropdown.open .arrow {
+    transform: rotate(180deg);
+}
+
+.dropdown-content {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: #ffffff;
+    min-width: 200px;
+    box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+    border-radius: 12px;
+    padding: 8px;
+    z-index: 100;
+    margin-top: 8px;
+}
+
+.dropdown.open .dropdown-content {
+    display: block;
+    animation: fadeIn 0.2s ease;
+}
+
+.dropdown-item {
+    width: 100%;
+    padding: 12px 16px;
+    border: none;
+    background: transparent;
+    color: #2d2d2d;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    font-family: 'Montserrat', sans-serif;
+    text-align: left;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: all 0.2s;
+}
+
+.dropdown-item:hover {
+    background: #f5f0eb;
+    color: #1a3c34;
+}
+
+/* Кнопка назад */
+
+.back-bar {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 20px;
+    padding: 12px 20px;
+    background: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.back-btn {
+    padding: 8px 16px;
+    border: 2px solid #1a3c34;
+    background: transparent;
+    color: #1a3c34;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: 'Montserrat', sans-serif;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.back-btn:hover {
+    background: #1a3c34;
+    color: #f5f0eb;
+}
+
+.page-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: #1a3c34;
+}
+
+/* Адаптив */
+
+@media (max-width: 768px) {
+    .main-nav {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .nav-group {
+        justify-content: center;
+        flex-wrap: wrap;
+    }
 }
 
 /* ==================== СТРАНИЦЫ ==================== */
@@ -956,3 +1103,49 @@ input[type="file"] {
     background: #b71c1c;
 }
 
+
+/* ==================== СОТРУДНИКИ ==================== */
+
+.staff-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    background: #ffffff;
+    border-radius: 12px;
+    margin-bottom: 10px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.staff-name {
+    font-weight: 600;
+    color: #1a3c34;
+    font-size: 16px;
+}
+
+.staff-role {
+    color: #666666;
+    font-size: 14px;
+    margin-top: 4px;
+}
+
+.staff-delete-btn {
+    background: #c62828;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: 'Montserrat', sans-serif;
+    font-weight: 500;
+}
+
+.staff-delete-btn:hover {
+    background: #b71c1c;
+}
+
+.staff-admin {
+    color: #1a3c34;
+    font-weight: 600;
+    font-size: 14px;
+}

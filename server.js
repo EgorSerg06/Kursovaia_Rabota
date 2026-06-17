@@ -501,6 +501,59 @@ app.delete('/api/categories/:id', authenticate, requireRole(['admin']), (req, re
     });
 });
 
+// ==================== АДМИН: УПРАВЛЕНИЕ СОТРУДНИКАМИ ====================
+
+// Получить всех сотрудников (кроме клиентов)
+app.get('/api/staff', authenticate, requireRole(['admin']), (req, res) => {
+    db.all(`SELECT id, name, phone, role FROM users WHERE role IN ('operator', 'courier', 'admin') ORDER BY role, name`, 
+    (err, rows) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json(rows);
+    });
+});
+
+// Создать сотрудника
+app.post('/api/staff', authenticate, requireRole(['admin']), (req, res) => {
+    const { phone, password, name, role } = req.body;
+    
+    if (!['operator', 'courier', 'admin'].includes(role)) {
+        return res.status(400).json({ error: 'Неверная роль' });
+    }
+    
+    const hashedPassword = bcrypt.hashSync(password, 10);
+    
+    db.run(`INSERT INTO users (phone, password, name, role) VALUES (?, ?, ?, ?)`,
+    [phone, hashedPassword, name, role], function(err) {
+        if (err) {
+            if (err.message.includes('UNIQUE constraint failed')) {
+                return res.status(400).json({ error: 'Этот телефон уже зарегистрирован' });
+            }
+            return res.status(500).json({ error: err.message });
+        }
+        res.status(201).json({ id: this.lastID, message: 'Сотрудник создан' });
+    });
+});
+
+// Удалить сотрудника (кроме себя)
+app.delete('/api/staff/:id', authenticate, requireRole(['admin']), (req, res) => {
+    const staffId = req.params.id;
+    
+    // Нельзя удалить самого себя
+    if (parseInt(staffId) === req.user.userId) {
+        return res.status(400).json({ error: 'Нельзя удалить самого себя' });
+    }
+    
+    db.run(`DELETE FROM users WHERE id = ? AND role IN ('operator', 'courier')`, 
+    [staffId], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        if (this.changes === 0) {
+            return res.status(404).json({ error: 'Сотрудник не найден или нельзя удалить' });
+        }
+        res.json({ message: 'Сотрудник удалён' });
+    });
+});
+
+
 // ==================== ЗАГРУЗКА КАРТИНОК ====================
 
 const fs = require('fs');
@@ -565,4 +618,6 @@ app.get('/api/dashboard', authenticate, requireRole(['admin']), (req, res) => {
 app.listen(PORT, () => {
     console.log(`🚀 Сервер запущен: http://localhost:${PORT}`);
     console.log(`📋 API: http://localhost:${PORT}/api/...`);
+    console.log(`🧪 Тесты: http://localhost:${PORT}/tests.html`);
+    console.log(`🍕 Сайт: http://localhost:${PORT}`);
 });

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Кафе "Вкусно" — Доставка еды</title>
+    <title>Гусь & Лебедь</title>
     <!-- Подключаем CSS из отдельного файла -->
     <link rel="stylesheet" href="style.css">
 </head>
@@ -17,15 +17,56 @@
 
         <!-- Навигация -->
         
-        <nav class="nav" id="nav">
-            <button onclick="showPage('menu')" class="nav-btn active">Меню</button>
-            <button onclick="showPage('cart')" class="nav-btn">Корзина (<span id="cart-count">0</span>)</button>
-            <button onclick="showPage('orders')" class="nav-btn">Мои заказы</button>
-            <button onclick="showPage('operator')" class="nav-btn hidden" id="operator-btn">Оператор</button>
-            <button onclick="showPage('courier')" class="nav-btn hidden" id="courier-btn">Курьер</button>
-            <button onclick="showPage('admin')" class="nav-btn hidden" id="admin-btn">Админ</button>
-            <button onclick="showPage('login')" class="nav-btn" id="login-btn">Вход</button>
+                <!-- Главное меню навигации -->
+        <nav class="main-nav" id="main-nav">
+            <!-- Клиентское меню (видно всем) -->
+            <div class="nav-group" id="client-menu">
+                <button onclick="showPage('menu')" class="nav-btn active" id="nav-menu">
+                    <span class="nav-icon">🏠</span> Меню
+                </button>
+                <button onclick="showPage('cart')" class="nav-btn" id="nav-cart">
+                    <span class="nav-icon">🛒</span> Корзина <span class="nav-badge" id="cart-count">0</span>
+                </button>
+                <button onclick="showPage('orders')" class="nav-btn" id="nav-orders">
+                    <span class="nav-icon">📋</span> Мои заказы
+                </button>
+            </div>
+
+            <!-- Меню персонала (выпадающее) -->
+            <div class="nav-group staff-menu hidden" id="staff-menu">
+                <div class="dropdown">
+                    <button class="nav-btn dropdown-toggle" onclick="toggleDropdown()">
+                        <span class="nav-icon">⚙️</span> Персонал <span class="arrow">▼</span>
+                    </button>
+                    <div class="dropdown-content" id="staff-dropdown">
+                        <button onclick="showPage('operator'); closeDropdown();" class="dropdown-item hidden" id="nav-operator">
+                            <span class="nav-icon">👨‍🍳</span> Оператор
+                        </button>
+                        <button onclick="showPage('courier'); closeDropdown();" class="dropdown-item hidden" id="nav-courier">
+                            <span class="nav-icon">🛵</span> Курьер
+                        </button>
+                        <button onclick="showPage('admin'); closeDropdown();" class="dropdown-item hidden" id="nav-admin">
+                            <span class="nav-icon">⚙️</span> Админ
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Вход/Выход -->
+            <div class="nav-group nav-auth">
+                <button onclick="showPage('login')" class="nav-btn nav-btn-auth" id="nav-login">
+                    <span class="nav-icon">🔑</span> Войти
+                </button>
+            </div>
         </nav>
+
+        <!-- Кнопка "Назад" -->
+        <div class="back-bar hidden" id="back-bar">
+            <button class="back-btn" onclick="goBack()">
+                <span>←</span> Назад
+            </button>
+            <span class="page-title" id="current-page-title">Меню</span>
+        </div>
 
         <!-- Страница МЕНЮ -->
         <section id="page-menu" class="page">
@@ -134,6 +175,7 @@
             <div class="admin-tabs">
                 <button class="tab-btn active" onclick="showAdminTab('dishes')">🍽️ Блюда</button>
                 <button class="tab-btn" onclick="showAdminTab('categories')">📁 Категории</button>
+                <button class="tab-btn" onclick="showAdminTab('staff')">👥 Сотрудники</button>
             </div>
             
             <!-- Вкладка: Блюда -->
@@ -190,6 +232,39 @@
                     <div id="admin-categories-list"></div>
                 </div>
             </div>
+
+                        <!-- Вкладка: Сотрудники -->
+            <div id="admin-tab-staff" class="admin-tab-content hidden">
+                <div class="admin-section">
+                    <h3>➕ Добавить сотрудника</h3>
+                    <div class="form-group">
+                        <label>Имя:</label>
+                        <input type="text" id="staff-name" placeholder="Иван Курьеров">
+                    </div>
+                    <div class="form-group">
+                        <label>Телефон (логин):</label>
+                        <input type="text" id="staff-phone" placeholder="courier2">
+                    </div>
+                    <div class="form-group">
+                        <label>Пароль:</label>
+                        <input type="text" id="staff-password" placeholder="password123">
+                    </div>
+                    <div class="form-group">
+                        <label>Роль:</label>
+                        <select id="staff-role">
+                            <option value="courier">Курьер</option>
+                            <option value="operator">Оператор</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-primary" onclick="addStaff()">Добавить сотрудника</button>
+                </div>
+                
+                <div class="admin-section">
+                    <h3>📋 Все сотрудники</h3>
+                    <div id="staff-list"></div>
+                </div>
+            </div>
+
         </section>
         
                 <!-- Страница ОПЕРАТОР -->

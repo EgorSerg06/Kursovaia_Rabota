@@ -11,35 +11,114 @@ let user = JSON.parse(localStorage.getItem('user') || 'null');
 
 /**
  * Переключает видимую страницу
- * @param {string} pageName - название страницы: 'menu', 'cart', 'orders', 'login', 'register'
+ * @param {string} pageName - название страницы: 'menu', 'cart', 'orders', 'login', 'register', 'admin', 'operator', 'courier'
  */
 function showPage(pageName) {
-    // Скрываем все страницы
+    // 1. Скрываем все страницы
     document.querySelectorAll('.page').forEach(page => {
         page.classList.add('hidden');
     });
     
-    // Показываем нужную
-    document.getElementById(`page-${pageName}`).classList.remove('hidden');
+    // 2. Показываем нужную страницу
+    const targetPage = document.getElementById(`page-${pageName}`);
+    if (targetPage) {
+        targetPage.classList.remove('hidden');
+    }
     
-    // Обновляем активную кнопку в навигации
+    // 3. Обновляем активную кнопку в навигации (по id, не по event.target)
     document.querySelectorAll('.nav-btn').forEach(btn => {
         btn.classList.remove('active');
     });
     
-    // Находим кнопку, которая вызвала функцию, и делаем её активной
-    // event.target — элемент, на который кликнули
-    if (event && event.target) {
-        event.target.classList.add('active');
+    // Находим кнопку по id и делаем активной
+    const activeBtn = document.getElementById(`nav-${pageName}`);
+    if (activeBtn) {
+        activeBtn.classList.add('active');
     }
     
-    // Загружаем данные для страницы
-    if (pageName === 'menu') loadMenu();
+    // 4. Показываем/скрываем кнопку "Назад"
+    updateBackButton(pageName);
+    
+    // 5. Закрываем выпадающее меню
+    closeDropdown();
+    
+    // 6. Загружаем данные для страницы
+    if (pageName === 'menu') { loadCategories(); loadMenu(); }
     if (pageName === 'cart') loadCart();
     if (pageName === 'orders') loadOrders();
-    if (pageName === 'admin') {loadDashboard(); loadAdminCategoriesSelect(); loadAdminMenu(); }
+    if (pageName === 'admin') { loadDashboard(); loadAdminCategoriesSelect(); loadAdminMenu(); }
     if (pageName === 'operator') loadOperatorOrders();
     if (pageName === 'courier') { loadCourierDashboard(); loadCourierOrders(); }
+}
+
+/**
+ * Показывает/скрывает выпадающее меню персонала
+ */
+function toggleDropdown() {
+    const dropdown = document.querySelector('.dropdown');
+    if (dropdown) {
+        dropdown.classList.toggle('open');
+    }
+}
+
+/**
+ * Закрывает выпадающее меню персонала
+ */
+function closeDropdown() {
+    const dropdown = document.querySelector('.dropdown');
+    if (dropdown) {
+        dropdown.classList.remove('open');
+    }
+}
+
+/**
+ * Закрывает меню при клике вне его
+ */
+document.addEventListener('click', function(e) {
+    const dropdown = document.querySelector('.dropdown');
+    if (dropdown && !dropdown.contains(e.target)) {
+        dropdown.classList.remove('open');
+    }
+});
+
+/**
+ * Обновляет кнопку "Назад" и заголовок страницы
+ */
+function updateBackButton(pageName) {
+    const backBar = document.getElementById('back-bar');
+    const titleEl = document.getElementById('current-page-title');
+    
+    // Страницы, где НЕ показываем "Назад"
+    const mainPages = ['menu', 'login', 'register'];
+    
+    if (!backBar) return; // Если элемента нет — выходим
+    
+    if (mainPages.includes(pageName)) {
+        backBar.classList.add('hidden');
+    } else {
+        backBar.classList.remove('hidden');
+        const titles = {
+            'cart': '🛒 Корзина',
+            'orders': '📋 Мои заказы',
+            'admin': '⚙️ Админ-панель',
+            'operator': '👨‍🍳 Панель оператора',
+            'courier': '🛵 Панель курьера'
+        };
+        if (titleEl) {
+            titleEl.textContent = titles[pageName] || pageName;
+        }
+    }
+}
+
+/**
+ * Возвращает на главную (или на панель для персонала)
+ */
+function goBack() {
+    if (user && (user.role === 'operator' || user.role === 'courier')) {
+        showPage(user.role);
+    } else {
+        showPage('menu');
+    }
 }
 
 // ==================== API ЗАПРОСЫ ====================
@@ -399,8 +478,14 @@ async function login() {
         // Обновляем интерфейс
         updateUI();
         
-        // Переходим в меню
-        showPage('menu');
+                // Перенаправляем на нужную страницу по роли
+        if (user.role === 'operator') {
+            showPage('operator');
+        } else if (user.role === 'courier') {
+            showPage('courier');
+        } else {
+            showPage('menu');
+        }
         
         showNotification(`Добро пожаловать, ${user.name}!`);
         
@@ -573,6 +658,7 @@ function showAdminTab(tabName) {
     
     // Загружаем данные
     if (tabName === 'categories') loadAdminCategories();
+    if (tabName === 'staff') loadStaffList();
 }
 
 /**
@@ -821,6 +907,96 @@ async function loadAdminMenu() {
     }
 }
 
+/**
+ * Загружает список сотрудников
+ */
+async function loadStaffList() {
+    try {
+        const staff = await api('/staff');
+        const container = document.getElementById('staff-list');
+        
+        if (staff.length === 0) {
+            container.innerHTML = '<div class="empty-message">Нет сотрудников</div>';
+            return;
+        }
+        
+        container.innerHTML = staff.map(person => `
+            <div class="staff-item">
+                <div>
+                    <div class="staff-name">${person.name}</div>
+                    <div class="staff-role">${translateRole(person.role)} | Тел: ${person.phone}</div>
+                </div>
+                ${person.role !== 'admin' ? `
+                    <button class="staff-delete-btn" onclick="deleteStaff(${person.id})">🗑️ Удалить</button>
+                ` : '<span class="staff-admin">Админ</span>'}
+            </div>
+        `).join('');
+        
+    } catch (error) {
+        console.error('Ошибка загрузки сотрудников:', error);
+    }
+}
+
+/**
+ * Добавляет нового сотрудника
+ */
+async function addStaff() {
+    const name = document.getElementById('staff-name').value.trim();
+    const phone = document.getElementById('staff-phone').value.trim();
+    const password = document.getElementById('staff-password').value;
+    const role = document.getElementById('staff-role').value;
+    
+    if (!name || !phone || !password) {
+        alert('Заполните все поля!');
+        return;
+    }
+    
+    if (password.length < 6) {
+        alert('Пароль минимум 6 символов!');
+        return;
+    }
+    
+    try {
+        await api('/staff', {
+            method: 'POST',
+            body: JSON.stringify({ name, phone, password, role })
+        });
+        
+        showNotification('✅ Сотрудник добавлен!');
+        
+        // Очистить поля
+        document.getElementById('staff-name').value = '';
+        document.getElementById('staff-phone').value = '';
+        document.getElementById('staff-password').value = '';
+        
+        // Перезагрузить список
+        loadStaffList();
+        
+    } catch (error) {
+        alert('Ошибка: ' + error.message);
+    }
+}
+
+/**
+ * Удаляет сотрудника
+ */
+async function deleteStaff(staffId) {
+    if (!confirm('Удалить сотрудника?')) return;
+    
+    try {
+        await api(`/staff/${staffId}`, {
+            method: 'DELETE'
+        });
+        
+        showNotification('🗑️ Сотрудник удалён');
+        loadStaffList();
+        
+    } catch (error) {
+        alert('Ошибка: ' + error.message);
+    }
+}
+
+
 // ==================== ОПЕРАТОР ====================
 
 let currentOrderFilter = 'all';
@@ -1023,27 +1199,87 @@ async function deleteDish(itemId) {
 /**
  * Обновляет элементы интерфейса в зависимости от состояния авторизации
  */
+
 function updateUI() {
     const userInfo = document.getElementById('user-info');
     const loginBtn = document.getElementById('login-btn');
+    const navLogin = document.getElementById('nav-login');
     
     if (user) {
-        // Пользователь вошёл
+        // Обновляем шапку
         userInfo.textContent = `Привет, ${user.name}! (${translateRole(user.role)})`;
-        loginBtn.textContent = 'Выйти';
-        loginBtn.onclick = logout;
         
-        // Если админ — можно добавить кнопку админ-панели (потом)
+        // Обновляем кнопку входа/выхода
+        if (navLogin) {
+            navLogin.innerHTML = '<span class="nav-icon">🚪</span> Выйти';
+            navLogin.onclick = logout;
+        }
+        
+        // Показываем/скрываем меню по ролям
+        updateRoleMenu();
         
     } else {
-        // Пользователь не вошёл
+        // Не авторизован
         userInfo.textContent = 'Войдите, чтобы заказать';
-        loginBtn.textContent = 'Вход';
-        loginBtn.onclick = () => showPage('login');
+        
+        if (navLogin) {
+            navLogin.innerHTML = '<span class="nav-icon">🔑</span> Войти';
+            navLogin.onclick = () => showPage('login');
+        }
+        
+        // Скрываем всё персональное меню
+        const staffMenu = document.getElementById('staff-menu');
+        if (staffMenu) staffMenu.classList.add('hidden');
     }
-    updateAdminButton();
-    updateOperatorButton();
-    updateCourierButton();
+}
+
+/**
+ * Показывает/скрывает пункты меню по роли пользователя
+ */
+function updateRoleMenu() {
+    const staffMenu = document.getElementById('staff-menu');
+    const navMenu = document.getElementById('nav-menu');
+    const navCart = document.getElementById('nav-cart');
+    const navOrders = document.getElementById('nav-orders');
+    const navOperator = document.getElementById('nav-operator');
+    const navCourier = document.getElementById('nav-courier');
+    const navAdmin = document.getElementById('nav-admin');
+    
+    // Скрываем всё по умолчанию
+    if (staffMenu) staffMenu.classList.add('hidden');
+    if (navOperator) navOperator.classList.add('hidden');
+    if (navCourier) navCourier.classList.add('hidden');
+    if (navAdmin) navAdmin.classList.add('hidden');
+    
+    if (!user) return;
+    
+    // Показываем клиентское меню (клиент и админ)
+    // Скрываем у оператора и курьера
+    if (user.role === 'operator' || user.role === 'courier') {
+        if (navMenu) navMenu.classList.add('hidden');
+        if (navCart) navCart.classList.add('hidden');
+        if (navOrders) navOrders.classList.add('hidden');
+    } else {
+        if (navMenu) navMenu.classList.remove('hidden');
+        if (navCart) navCart.classList.remove('hidden');
+        if (navOrders) navOrders.classList.remove('hidden');
+    }
+    
+    // Показываем меню персонала если есть роль
+    if (['operator', 'courier', 'admin'].includes(user.role)) {
+        if (staffMenu) staffMenu.classList.remove('hidden');
+    }
+    
+    // Показываем нужные пункты в выпадающем меню
+    if (user.role === 'operator' || user.role === 'admin') {
+        if (navOperator) navOperator.classList.remove('hidden');
+    }
+    if (user.role === 'courier') {
+        if (navCourier) navCourier.classList.remove('hidden');
+    }
+    if (user.role === 'admin') {
+        if (navAdmin) navAdmin.classList.remove('hidden');
+    }
 }
 
 // ==================== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ====================
