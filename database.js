@@ -56,21 +56,17 @@ const initDatabase = () => {
         )`);
 
         // Корзина — временное хранилище
-        // Когда клиент оформляет заказ — корзина очищается
         db.run(`CREATE TABLE IF NOT EXISTS carts (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             item_id INTEGER NOT NULL,
             quantity INTEGER DEFAULT 1,
             FOREIGN KEY (user_id) REFERENCES users(id),
-            FOREIGN KEY (item_id) REFERENCES menu_items(id)
+            FOREIGN KEY (item_id) REFERENCES menu_items(id),
+            UNIQUE(user_id, item_id)
         )`);
 
-        // Заказы
-        // status: new → cooking → ready → delivered (или cancelled)
-        // created_at заполняется автоматически текущей датой и временем
-                // Заказы
-        // status: new → cooking → on_the_way → delivered (или cancelled)
+        // Заказы: new → cooking → on_the_way → delivered (или cancelled)
         // courier_id — кто доставляет (null если ещё не назначен)
         db.run(`CREATE TABLE IF NOT EXISTS orders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -89,7 +85,7 @@ const initDatabase = () => {
         // Сколько курьер заработал с каждого заказа
         db.run(`CREATE TABLE IF NOT EXISTS courier_earnings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            order_id INTEGER NOT NULL,
+            order_id INTEGER NOT NULL UNIQUE,
             courier_id INTEGER NOT NULL,
             order_total REAL NOT NULL,
             commission_percent INTEGER NOT NULL,
@@ -98,6 +94,10 @@ const initDatabase = () => {
             FOREIGN KEY (order_id) REFERENCES orders(id),
             FOREIGN KEY (courier_id) REFERENCES users(id)
         )`);
+
+        // Индексы для существующих БД (CREATE TABLE IF NOT EXISTS не добавляет UNIQUE)
+        db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_carts_user_item ON carts(user_id, item_id)`);
+        db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_courier_earnings_order ON courier_earnings(order_id)`);
 
         // Позиции в заказе
         // price_at_moment — цена на момент заказа (если потом цена изменится в меню)

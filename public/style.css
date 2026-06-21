@@ -1149,3 +1149,78 @@ input[type="file"] {
     font-weight: 600;
     font-size: 14px;
 }
+
+/* ==================== МОДАЛЬНОЕ ОКНО ==================== */
+
+.modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+}
+
+.modal-content {
+    background: white;
+    padding: 30px;
+    border-radius: 15px;
+    max-width: 450px;
+    width: 90%;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+}
+
+.modal-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.btn-secondary {
+    background: #95a5a6;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background: #7f8c8d;
+}
+
+.btn-danger {
+    background: #e74c3c;
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #c0392b;
+}
+
+.order-details-btn {
+    margin-top: 12px;
+    width: auto;
+    padding: 8px 16px;
+    font-size: 14px;
+}
+
+.order-items-list {
+    margin-top: 12px;
+    padding: 12px;
+    background: #f9f9f9;
+    border-radius: 8px;
+}
+
+.order-item-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px solid #eee;
+}
+
+.order-item-row:last-child {
+    border-bottom: none;
+}
+
+.status-on_the_way {
+    background: #3498db;
+    color: white;
+}

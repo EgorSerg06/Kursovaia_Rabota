@@ -1,11 +1,13 @@
 // ==================== НАСТРОЙКИ ====================
 
-// Адрес нашего сервера
-const API_URL = 'http://localhost:3000/api';
+// Адрес API (тот же хост, что и страница)
+const API_URL = `${window.location.origin}/api`;
 
-// Данные пользователя из localStorage (сохраняются даже после закрытия браузера)
+// Данные пользователя из localStorage
 let token = localStorage.getItem('token') || '';
 let user = JSON.parse(localStorage.getItem('user') || 'null');
+let ordersPollInterval = null;
+let searchDebounceTimer = null;
 
 // ==================== НАВИГАЦИЯ ====================
 
@@ -44,8 +46,9 @@ function showPage(pageName) {
     
     // 6. Загружаем данные для страницы
     if (pageName === 'menu') { loadCategories(); loadMenu(); }
-    if (pageName === 'cart') loadCart();
-    if (pageName === 'orders') loadOrders();
+    if (pageName === 'cart') { loadCart(); prefillOrderFields(); }
+    if (pageName === 'orders') { loadOrders(); startOrdersPolling(); }
+    else { stopOrdersPolling(); }
     if (pageName === 'admin') { loadDashboard(); loadAdminCategoriesSelect(); loadAdminMenu(); }
     if (pageName === 'operator') loadOperatorOrders();
     if (pageName === 'courier') { loadCourierDashboard(); loadCourierOrders(); }
@@ -134,15 +137,18 @@ async function api(url, options = {}) {
             ...options,
             headers: {
                 'Content-Type': 'application/json',
-                // Если есть токен — добавляем в заголовок Authorization
                 ...(token ? { 'Authorization': 'Bearer ' + token } : {}),
                 ...options.headers
             }
         });
         
-        const data = await response.json();
+        let data;
+        try {
+            data = await response.json();
+        } catch {
+            data = {};
+        }
         
-        // Если сервер вернул ошибку (статус 400+)
         if (!response.ok) {
             throw new Error(data.error || 'Ошибка сервера');
         }
@@ -151,6 +157,36 @@ async function api(url, options = {}) {
     } catch (error) {
         console.error('API Error:', error);
         throw error;
+    }
+}
+
+function debounceSearch() {
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(loadMenu, 400);
+}
+
+function prefillOrderFields() {
+    const addressEl = document.getElementById('order-address');
+    const phoneEl = document.getElementById('order-phone');
+    if (user?.address && addressEl && !addressEl.value) {
+        addressEl.value = user.address;
+    }
+    if (user?.phone && phoneEl && !phoneEl.value) {
+        phoneEl.value = user.phone;
+    }
+}
+
+function startOrdersPolling() {
+    stopOrdersPolling();
+    if (token && user?.role === 'client') {
+        ordersPollInterval = setInterval(loadOrders, 15000);
+    }
+}
+
+function stopOrdersPolling() {
+    if (ordersPollInterval) {
+        clearInterval(ordersPollInterval);
+        ordersPollInterval = null;
     }
 }
 
@@ -250,9 +286,8 @@ async function loadMenu() {
  * Добавляет блюдо в корзину
  */
 async function addToCart(itemId) {
-    // Проверяем, вошёл ли пользователь
     if (!token) {
-        alert('Сначала войдите в аккаунт!');
+        showNotification('Сначала войдите в аккаунт!');
         showPage('login');
         return;
     }
@@ -263,14 +298,11 @@ async function addToCart(itemId) {
             body: JSON.stringify({ item_id: itemId, quantity: 1 })
         });
         
-        // Показываем уведомление
         showNotification('✅ Добавлено в корзину!');
-        
-        // Обновляем счётчик корзины
         loadCart();
         
     } catch (error) {
-        alert('Ошибка: ' + error.message);
+        showNotification('Ошибка: ' + error.message, true);
     }
 }
 
@@ -350,7 +382,7 @@ async function updateQuantity(cartItemId, newQuantity) {
         loadCart(); // Перезагружаем корзину
         
     } catch (error) {
-        alert('Ошибка: ' + error.message);
+        showNotification('Ошибка: ' + error.message, true);
     }
 }
 
@@ -367,7 +399,7 @@ async function removeFromCart(cartItemId) {
         loadCart(); // Перезагружаем корзину
         
     } catch (error) {
-        alert('Ошибка: ' + error.message);
+        showNotification('Ошибка: ' + error.message, true);
     }
 }
 
@@ -381,7 +413,7 @@ async function createOrder() {
     const phone = document.getElementById('order-phone').value.trim();
     
     if (!address || !phone) {
-        alert('Заполните адрес и телефон!');
+        showNotification('Заполните адрес и телефон!', true);
         return;
     }
     
@@ -391,18 +423,22 @@ async function createOrder() {
             body: JSON.stringify({ address, phone })
         });
         
-        alert(`Заказ №${result.orderId} оформлен! Сумма: ${result.total} ₽`);
+        if (user && address !== user.address) {
+            user.address = address;
+            localStorage.setItem('user', JSON.stringify(user));
+            api('/profile', { method: 'PATCH', body: JSON.stringify({ address }) }).catch(() => {});
+        }
         
-        // Очищаем поля
+        showNotification(`Заказ №${result.orderId} оформлен! Сумма: ${result.total} ₽`);
+        
         document.getElementById('order-address').value = '';
         document.getElementById('order-phone').value = '';
         
-        // Переходим к заказам
         loadCart();
         showPage('orders');
         
     } catch (error) {
-        alert('Ошибка оформления: ' + error.message);
+        showNotification('Ошибка оформления: ' + error.message, true);
     }
 }
 
@@ -430,7 +466,7 @@ async function loadOrders() {
         document.getElementById('orders-empty').style.display = 'none';
         
         container.innerHTML = orders.map(order => `
-            <div class="order-card">
+            <div class="order-card" id="order-card-${order.id}">
                 <div class="order-header">
                     <span class="order-number">Заказ №${order.id}</span>
                     <span class="status status-${order.status}">${translateStatus(order.status)}</span>
@@ -441,11 +477,38 @@ async function loadOrders() {
                     <div>📞 ${order.phone || 'Телефон не указан'}</div>
                     <div>🕐 ${formatDate(order.created_at)}</div>
                 </div>
+                <button class="btn btn-secondary order-details-btn" onclick="toggleOrderDetails(${order.id})">
+                    📋 Состав заказа
+                </button>
+                <div class="order-items-list hidden" id="order-items-${order.id}"></div>
             </div>
         `).join('');
         
     } catch (error) {
         console.error('Ошибка загрузки заказов:', error);
+    }
+}
+
+async function toggleOrderDetails(orderId) {
+    const container = document.getElementById(`order-items-${orderId}`);
+    if (!container) return;
+    
+    if (!container.classList.contains('hidden')) {
+        container.classList.add('hidden');
+        return;
+    }
+    
+    try {
+        const order = await api(`/orders/${orderId}`);
+        container.innerHTML = order.items.map(item => `
+            <div class="order-item-row">
+                <span>${item.name} × ${item.quantity}</span>
+                <span>${item.price_at_moment * item.quantity} ₽</span>
+            </div>
+        `).join('');
+        container.classList.remove('hidden');
+    } catch (error) {
+        showNotification('Не удалось загрузить состав: ' + error.message, true);
     }
 }
 
@@ -459,7 +522,7 @@ async function login() {
     const password = document.getElementById('login-password').value;
     
     if (!phone || !password) {
-        alert('Введите телефон и пароль!');
+        showNotification('Введите телефон и пароль!', true);
         return;
     }
     
@@ -490,7 +553,7 @@ async function login() {
         showNotification(`Добро пожаловать, ${user.name}!`);
         
     } catch (error) {
-        alert('Ошибка входа: ' + error.message);
+        showNotification('Ошибка входа: ' + error.message, true);
     }
 }
 
@@ -500,34 +563,36 @@ async function login() {
 async function register() {
     const name = document.getElementById('reg-name').value.trim();
     const phone = document.getElementById('reg-phone').value.trim();
+    const address = document.getElementById('reg-address')?.value.trim() || '';
     const password = document.getElementById('reg-password').value;
     
     if (!name || !phone || !password) {
-        alert('Заполните все поля!');
+        showNotification('Заполните все поля!', true);
         return;
     }
     
     if (password.length < 6) {
-        alert('Пароль должен быть минимум 6 символов!');
+        showNotification('Пароль должен быть минимум 6 символов!', true);
         return;
     }
     
     try {
         await api('/register', {
             method: 'POST',
-            body: JSON.stringify({ name, phone, password })
+            body: JSON.stringify({ name, phone, password, address })
         });
         
-        alert('Регистрация успешна! Теперь войдите.');
+        showNotification('Регистрация успешна! Теперь войдите.');
         showPage('login');
         
-        // Очищаем поля
         document.getElementById('reg-name').value = '';
         document.getElementById('reg-phone').value = '';
         document.getElementById('reg-password').value = '';
+        const regAddress = document.getElementById('reg-address');
+        if (regAddress) regAddress.value = '';
         
     } catch (error) {
-        alert('Ошибка регистрации: ' + error.message);
+        showNotification('Ошибка регистрации: ' + error.message, true);
     }
 }
 
@@ -539,6 +604,7 @@ function logout() {
     user = null;
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    stopOrdersPolling();
     updateUI();
     showPage('menu');
     showNotification('Вы вышли из аккаунта');
@@ -547,47 +613,7 @@ function logout() {
 // ==================== АДМИН-ПАНЕЛЬ ====================
 
 /**
- * Показывает/скрывает кнопку админа в зависимости от роли
- */
-function updateAdminButton() {
-    const adminBtn = document.getElementById('admin-btn');
-    if (user && user.role === 'admin') {
-        adminBtn.classList.remove('hidden');
-    } else {
-        adminBtn.classList.add('hidden');
-    }
-}
-
-
-/**
- * Показывает/скрывает кнопку оператора
- */
-function updateOperatorButton() {
-    const operatorBtn = document.getElementById('operator-btn');
-    if (user && (user.role === 'operator' || user.role === 'admin')) {
-        operatorBtn.classList.remove('hidden');
-    } else {
-        operatorBtn.classList.add('hidden');
-    }
-}
-
-/**
- * Показывает/скрывает кнопку курьера
- */
-function updateCourierButton() {
-    const courierBtn = document.getElementById('courier-btn');
-    if (user && user.role === 'courier') {
-        courierBtn.classList.remove('hidden');
-    } else {
-        courierBtn.classList.add('hidden');
-    }
-}
-
-// ==================== DASHBOARD ====================
-
-/**
  * Загружает 3 цифры для админ-панели
- * Вызывается при открытии страницы админа
  */
 async function loadDashboard() {
     try {
@@ -635,28 +661,23 @@ function animateNumber(elementId, target, suffix = '') {
 
 // ==================== АДМИН: КАТЕГОРИИ И КАРТИНКИ ====================
 
-let adminCategories = []; // Кэш категорий для админа
-let uploadedImageUrl = ''; // URL загруженной картинки
+let adminCategories = [];
+let adminMenuCache = [];
+let uploadedImageUrl = '';
 
 /**
  * Переключает вкладки в админ-панели
  */
-function showAdminTab(tabName) {
-    // Скрываем все вкладки
+function showAdminTab(tabName, btn) {
     document.querySelectorAll('.admin-tab-content').forEach(tab => {
         tab.classList.add('hidden');
     });
     
-    // Показываем нужную
     document.getElementById(`admin-tab-${tabName}`).classList.remove('hidden');
     
-    // Обновляем кнопки
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-        btn.classList.remove('active');
-    });
-    event.target.classList.add('active');
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
     
-    // Загружаем данные
     if (tabName === 'categories') loadAdminCategories();
     if (tabName === 'staff') loadStaffList();
 }
@@ -673,6 +694,13 @@ async function loadAdminCategoriesSelect() {
         select.innerHTML = categories.map(cat => 
             `<option value="${cat.id}">${cat.name}</option>`
         ).join('');
+        
+        const editSelect = document.getElementById('edit-dish-category');
+        if (editSelect) {
+            editSelect.innerHTML = categories.map(cat =>
+                `<option value="${cat.id}">${cat.name}</option>`
+            ).join('');
+        }
         
     } catch (error) {
         console.error('Ошибка загрузки категорий:', error);
@@ -744,7 +772,7 @@ async function addDish() {
     const category_id = parseInt(document.getElementById('admin-category').value);
     
     if (!name || !price) {
-        alert('Название и цена обязательны!');
+        showNotification('Название и цена обязательны!', true);
         return;
     }
     
@@ -783,7 +811,7 @@ async function addDish() {
         loadMenu();
         
     } catch (error) {
-        alert('Ошибка: ' + error.message);
+        showNotification('Ошибка: ' + error.message, true);
     }
 }
 
@@ -795,7 +823,7 @@ async function addCategory() {
     const sort_order = parseInt(document.getElementById('new-category-sort').value) || 0;
     
     if (!name) {
-        alert('Введите название категории!');
+        showNotification('Введите название категории!', true);
         return;
     }
     
@@ -816,7 +844,7 @@ async function addCategory() {
         loadCategories(); // В меню тоже
         
     } catch (error) {
-        alert('Ошибка: ' + error.message);
+        showNotification('Ошибка: ' + error.message, true);
     }
 }
 
@@ -864,7 +892,7 @@ async function deleteCategory(categoryId) {
         loadCategories();
         
     } catch (error) {
-        alert('Ошибка: ' + error.message);
+        showNotification('Ошибка: ' + error.message, true);
     }
 }
 
@@ -873,8 +901,8 @@ async function deleteCategory(categoryId) {
  */
 async function loadAdminMenu() {
     try {
-        // Все блюда (доступные + недоступные)
         const items = await api('/menu/all');
+        adminMenuCache = items;
         const container = document.getElementById('admin-menu-list');
         
         if (items.length === 0) {
@@ -891,6 +919,7 @@ async function loadAdminMenu() {
                         </div>
                     </div>
                     <div class="admin-item-controls">
+                        <button class="admin-btn" onclick="openEditDish(${item.id})">✏️ Редактировать</button>
                         <button class="admin-btn admin-btn-toggle ${item.is_available ? '' : 'off'}" 
                                 onclick="toggleDish(${item.id}, ${item.is_available ? 0 : 1})">
                             ${item.is_available ? 'Сделать недоступным' : 'Сделать доступным'}
@@ -903,7 +932,7 @@ async function loadAdminMenu() {
             `).join('');
         }
     } catch (error) {
-        alert('Ошибка загрузки меню: ' + error.message);
+        showNotification('Ошибка загрузки меню: ' + error.message, true);
     }
 }
 
@@ -947,12 +976,12 @@ async function addStaff() {
     const role = document.getElementById('staff-role').value;
     
     if (!name || !phone || !password) {
-        alert('Заполните все поля!');
+        showNotification('Заполните все поля!', true);
         return;
     }
     
     if (password.length < 6) {
-        alert('Пароль минимум 6 символов!');
+        showNotification('Пароль минимум 6 символов!', true);
         return;
     }
     
@@ -973,7 +1002,7 @@ async function addStaff() {
         loadStaffList();
         
     } catch (error) {
-        alert('Ошибка: ' + error.message);
+        showNotification('Ошибка: ' + error.message, true);
     }
 }
 
@@ -992,7 +1021,7 @@ async function deleteStaff(staffId) {
         loadStaffList();
         
     } catch (error) {
-        alert('Ошибка: ' + error.message);
+        showNotification('Ошибка: ' + error.message, true);
     }
 }
 
@@ -1072,18 +1101,28 @@ function getNextStatusButton(orderId, currentStatus) {
     // Если нужен курьер — показываем select с курьерами
     if (status.needCourier) {
         return `
-            <div style="display: flex; gap: 10px; align-items: center;">
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                 <select id="courier-select-${orderId}" class="courier-select">
                     <option value="">Выберите курьера...</option>
                 </select>
                 <button class="btn btn-primary" onclick="assignCourierAndSend(${orderId})" style="width: auto;">
                     ${status.label}
                 </button>
+                <button class="btn btn-danger" onclick="cancelOrder(${orderId})" style="width: auto;">❌ Отменить</button>
             </div>
         `;
     }
     
-    return `<button class="btn btn-primary" onclick="updateOrderStatus(${orderId}, '${status.next}')">${status.label}</button>`;
+    const cancelBtn = ['new', 'cooking'].includes(currentStatus)
+        ? `<button class="btn btn-danger" onclick="cancelOrder(${orderId})" style="width: auto; margin-left: 8px;">❌ Отменить</button>`
+        : '';
+    
+    return `<button class="btn btn-primary" onclick="updateOrderStatus(${orderId}, '${status.next}')">${status.label}</button>${cancelBtn}`;
+}
+
+async function cancelOrder(orderId) {
+    if (!confirm('Отменить заказ №' + orderId + '?')) return;
+    await updateOrderStatus(orderId, 'cancelled');
 }
 
 /**
@@ -1113,45 +1152,56 @@ async function updateOrderStatus(orderId, newStatus) {
         loadOperatorOrders();
         
     } catch (error) {
-        alert('Ошибка: ' + error.message);
+        showNotification('Ошибка: ' + error.message, true);
     }
 }
 
-
-
 /**
- * Добавляет новое блюдо
+ * Открывает форму редактирования блюда
  */
-async function addDish() {
-    const name = document.getElementById('admin-name').value.trim();
-    const description = document.getElementById('admin-desc').value.trim();
-    const price = parseFloat(document.getElementById('admin-price').value);
-    const category_id = parseInt(document.getElementById('admin-category').value);
+function openEditDish(itemId) {
+    const item = adminMenuCache.find(i => i.id === itemId);
+    if (!item) return;
+    editDish(item);
+}
+
+function editDish(item) {
+    document.getElementById('edit-dish-id').value = item.id;
+    document.getElementById('edit-dish-name').value = item.name;
+    document.getElementById('edit-dish-desc').value = item.description || '';
+    document.getElementById('edit-dish-price').value = item.price;
+    document.getElementById('edit-dish-category').value = item.category_id;
+    document.getElementById('edit-dish-modal').classList.remove('hidden');
+}
+
+function closeEditDishModal() {
+    document.getElementById('edit-dish-modal').classList.add('hidden');
+}
+
+async function saveDishEdit() {
+    const id = document.getElementById('edit-dish-id').value;
+    const name = document.getElementById('edit-dish-name').value.trim();
+    const description = document.getElementById('edit-dish-desc').value.trim();
+    const price = parseFloat(document.getElementById('edit-dish-price').value);
+    const category_id = parseInt(document.getElementById('edit-dish-category').value);
     
     if (!name || !price) {
-        alert('Название и цена обязательны!');
+        showNotification('Название и цена обязательны!', true);
         return;
     }
     
     try {
-        await api('/menu', {
-            method: 'POST',
+        await api(`/menu/${id}`, {
+            method: 'PATCH',
             body: JSON.stringify({ category_id, name, description, price })
         });
         
-        alert('Блюдо добавлено!');
-        
-        // Очищаем поля
-        document.getElementById('admin-name').value = '';
-        document.getElementById('admin-desc').value = '';
-        document.getElementById('admin-price').value = '';
-        
-        // Перезагружаем списки
+        showNotification('✅ Блюдо обновлено!');
+        closeEditDishModal();
         loadAdminMenu();
         loadMenu();
-        
     } catch (error) {
-        alert('Ошибка: ' + error.message);
+        showNotification('Ошибка: ' + error.message, true);
     }
 }
 
@@ -1170,7 +1220,7 @@ async function toggleDish(itemId, isAvailable) {
         loadMenu();
         
     } catch (error) {
-        alert('Ошибка: ' + error.message);
+        showNotification('Ошибка: ' + error.message, true);
     }
 }
 
@@ -1190,7 +1240,7 @@ async function deleteDish(itemId) {
         loadMenu();
         
     } catch (error) {
-        alert('Ошибка: ' + error.message);
+        showNotification('Ошибка: ' + error.message, true);
     }
 }
 
@@ -1291,20 +1341,18 @@ function translateStatus(status) {
     const statuses = {
         'new': 'Новый',
         'cooking': 'Готовится',
-        'ready': 'Готов',
+        'on_the_way': 'В пути',
         'delivered': 'Доставлен',
         'cancelled': 'Отменён'
     };
     return statuses[status] || status;
 }
 
-/**
- * Переводит роль пользователя
- */
 function translateRole(role) {
     const roles = {
         'client': 'Клиент',
         'operator': 'Оператор',
+        'courier': 'Курьер',
         'admin': 'Администратор'
     };
     return roles[role] || role;
@@ -1327,15 +1375,14 @@ function formatDate(dateString) {
 /**
  * Показывает всплывающее уведомление
  */
-function showNotification(message) {
-    // Создаём элемент уведомления
+function showNotification(message, isError = false) {
     const notif = document.createElement('div');
     notif.textContent = message;
     notif.style.cssText = `
         position: fixed;
         top: 20px;
         right: 20px;
-        background: #4ecdc4;
+        background: ${isError ? '#e74c3c' : '#4ecdc4'};
         color: white;
         padding: 15px 25px;
         border-radius: 10px;
@@ -1384,7 +1431,7 @@ async function assignCourierAndSend(orderId) {
     const courierId = select ? select.value : '';
     
     if (!courierId) {
-        alert('Выберите курьера!');
+        showNotification('Выберите курьера!', true);
         return;
     }
     
@@ -1398,7 +1445,7 @@ async function assignCourierAndSend(orderId) {
         loadOperatorOrders();
         
     } catch (error) {
-        alert('Ошибка: ' + error.message);
+        showNotification('Ошибка: ' + error.message, true);
     }
 }
 
@@ -1532,7 +1579,7 @@ async function deliverOrder(orderId) {
         loadCourierOrders();
         
     } catch (error) {
-        alert('Ошибка: ' + error.message);
+        showNotification('Ошибка: ' + error.message, true);
     }
 }
 
@@ -1552,20 +1599,6 @@ function showCourierNotification(orderInfo) {
  */
 function hideCourierNotification() {
     document.getElementById('courier-notifications').classList.add('hidden');
-}
-
-/**
- * Перевод статуса для курьера
- */
-function translateStatus(status) {
-    const statuses = {
-        'new': 'Новый',
-        'cooking': 'Готовится',
-        'on_the_way': 'В пути',
-        'delivered': 'Доставлен',
-        'cancelled': 'Отменён'
-    };
-    return statuses[status] || status;
 }
 
 // ==================== ЗАПУСК ====================

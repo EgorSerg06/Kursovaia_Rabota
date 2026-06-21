@@ -1,12 +1,14 @@
 {
   "name": "cafe-project",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Система заказов доставки еды «Гусь & Лебедь»",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js",
+    "seed": "node seed.js",
+    "test": "echo \"Откройте http://localhost:3000/tests.html для запуска тестов\""
   },
-  "keywords": [],
+  "keywords": ["cafe", "delivery", "express", "sqlite"],
   "author": "",
   "license": "ISC",
   "type": "commonjs",

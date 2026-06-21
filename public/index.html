@@ -74,7 +74,7 @@
             <div class="categories" id="categories"></div>
             
             <!-- Поиск -->
-            <input type="text" id="search" class="search-input" placeholder="🔍 Поиск блюд..." oninput="loadMenu()">
+            <input type="text" id="search" class="search-input" placeholder="🔍 Поиск блюд..." oninput="debounceSearch()">
             
             <!-- Сетка блюд -->
             <div class="menu-grid" id="menu-items"></div>
@@ -133,11 +133,15 @@
                 <h2>Регистрация</h2>
                 <div class="form-group">
                     <label>Имя:</label>
-                    <input type="text" id="reg-name" placeholder="Иван">
+                    <input type="text" id="reg-name" placeholder="Егор">
                 </div>
                 <div class="form-group">
                     <label>Телефон:</label>
-                    <input type="text" id="reg-phone" placeholder="+79991234567">
+                    <input type="text" id="reg-phone" placeholder="+79998887766">
+                </div>
+                <div class="form-group">
+                    <label>Адрес (необязательно):</label>
+                    <input type="text" id="reg-address" placeholder="ул. Ленина, 1">
                 </div>
                 <div class="form-group">
                     <label>Пароль:</label>
@@ -173,9 +177,9 @@
             
             <!-- Вкладки админа -->
             <div class="admin-tabs">
-                <button class="tab-btn active" onclick="showAdminTab('dishes')">🍽️ Блюда</button>
-                <button class="tab-btn" onclick="showAdminTab('categories')">📁 Категории</button>
-                <button class="tab-btn" onclick="showAdminTab('staff')">👥 Сотрудники</button>
+                <button class="tab-btn active" onclick="showAdminTab('dishes', this)">🍽️ Блюда</button>
+                <button class="tab-btn" onclick="showAdminTab('categories', this)">📁 Категории</button>
+                <button class="tab-btn" onclick="showAdminTab('staff', this)">👥 Сотрудники</button>
             </div>
             
             <!-- Вкладка: Блюда -->
@@ -247,7 +251,7 @@
                     </div>
                     <div class="form-group">
                         <label>Пароль:</label>
-                        <input type="text" id="staff-password" placeholder="password123">
+                        <input type="password" id="staff-password" placeholder="password123">
                     </div>
                     <div class="form-group">
                         <label>Роль:</label>
@@ -333,6 +337,34 @@
 
 
 
+    </div>
+
+    <!-- Модальное окно редактирования блюда -->
+    <div id="edit-dish-modal" class="modal hidden">
+        <div class="modal-content">
+            <h3>✏️ Редактировать блюдо</h3>
+            <input type="hidden" id="edit-dish-id">
+            <div class="form-group">
+                <label>Название:</label>
+                <input type="text" id="edit-dish-name">
+            </div>
+            <div class="form-group">
+                <label>Описание:</label>
+                <input type="text" id="edit-dish-desc">
+            </div>
+            <div class="form-group">
+                <label>Цена:</label>
+                <input type="number" id="edit-dish-price">
+            </div>
+            <div class="form-group">
+                <label>Категория:</label>
+                <select id="edit-dish-category"></select>
+            </div>
+            <div class="modal-actions">
+                <button class="btn btn-primary" onclick="saveDishEdit()">Сохранить</button>
+                <button class="btn btn-secondary" onclick="closeEditDishModal()">Отмена</button>
+            </div>
+        </div>
     </div>
 
     <!-- Подключаем JavaScript из отдельного файла -->

@@ -4,13 +4,25 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
+const fs = require('fs');
+const path = require('path');
 const { db, initDatabase } = require('./database');
 
-// ==================== НАСТРОЙКИ ====================
+// Загружаем .env если файл есть (без доп. зависимостей)
+const envPath = path.join(__dirname, '.env');
+if (fs.existsSync(envPath)) {
+    fs.readFileSync(envPath, 'utf8').split('\n').forEach(line => {
+        const match = line.match(/^([^#=]+)=(.*)$/);
+        if (match && !process.env[match[1].trim()]) {
+            process.env[match[1].trim()] = match[2].trim();
+        }
+    });
+}
 
 const app = express();
-const PORT = 3000;
-const JWT_SECRET = 'my-secret-key-12345';
+const PORT = process.env.PORT || 3000;
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024; // 5 MB
 
 // ==================== MIDDLEWARE ====================
 
@@ -47,15 +59,25 @@ const requireRole = (roles) => {
     };
 };
 
+// ==================== ВАЛИДАЦИЯ ====================
+
+const validatePhone = (phone) => phone && String(phone).trim().length >= 3;
+const validatePassword = (password) => password && String(password).length >= 6;
+const validatePrice = (price) => typeof price === 'number' && price > 0 && !isNaN(price);
+
 // ==================== АВТОРИЗАЦИЯ ====================
 
 app.post('/api/register', (req, res) => {
-    const { phone, password, name, role = 'client' } = req.body;
+    const { phone, password, name, address } = req.body;
+    
+    if (!validatePhone(phone) || !validatePassword(password) || !name?.trim()) {
+        return res.status(400).json({ error: 'Укажите имя, телефон (мин. 3 символа) и пароль (мин. 6 символов)' });
+    }
+    
     const hashedPassword = bcrypt.hashSync(password, 10);
+    const sql = `INSERT INTO users (phone, password, name, role, address) VALUES (?, ?, ?, 'client', ?)`;
     
-    const sql = `INSERT INTO users (phone, password, name, role) VALUES (?, ?, ?, ?)`;
-    
-    db.run(sql, [phone, hashedPassword, name, role], function(err) {
+    db.run(sql, [phone.trim(), hashedPassword, name.trim(), address?.trim() || null], function(err) {
         if (err) {
             if (err.message.includes('UNIQUE constraint failed')) {
                 return res.status(400).json({ error: 'Этот телефон уже зарегистрирован' });
@@ -69,7 +91,11 @@ app.post('/api/register', (req, res) => {
 app.post('/api/login', (req, res) => {
     const { phone, password } = req.body;
     
-    db.get(`SELECT * FROM users WHERE phone = ?`, [phone], (err, user) => {
+    if (!validatePhone(phone) || !password) {
+        return res.status(400).json({ error: 'Введите телефон и пароль' });
+    }
+    
+    db.get(`SELECT * FROM users WHERE phone = ?`, [phone.trim()], (err, user) => {
         if (err || !user) {
             return res.status(401).json({ error: 'Неверный телефон или пароль' });
         }
@@ -87,8 +113,25 @@ app.post('/api/login', (req, res) => {
         
         res.json({ 
             token, 
-            user: { id: user.id, name: user.name, role: user.role } 
+            user: { id: user.id, name: user.name, role: user.role, address: user.address, phone: user.phone } 
         });
+    });
+});
+
+app.get('/api/profile', authenticate, (req, res) => {
+    db.get(`SELECT id, name, phone, role, address FROM users WHERE id = ?`, [req.user.userId], (err, user) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!user) return res.status(404).json({ error: 'Пользователь не найден' });
+        res.json(user);
+    });
+});
+
+app.patch('/api/profile', authenticate, (req, res) => {
+    const { name, address } = req.body;
+    db.run(`UPDATE users SET name = COALESCE(?, name), address = COALESCE(?, address) WHERE id = ?`,
+    [name?.trim(), address?.trim(), req.user.userId], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ message: 'Профиль обновлён' });
     });
 });
 
@@ -193,6 +236,10 @@ app.post('/api/orders', authenticate, requireRole(['client']), (req, res) => {
     const { address, phone } = req.body;
     const user_id = req.user.userId;
     
+    if (!address?.trim() || !phone?.trim()) {
+        return res.status(400).json({ error: 'Укажите адрес и телефон доставки' });
+    }
+    
     db.all(`
         SELECT c.*, mi.price, mi.is_available, mi.name
         FROM carts c 
@@ -215,33 +262,52 @@ app.post('/api/orders', authenticate, requireRole(['client']), (req, res) => {
         
         const total = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
         
-        db.run(
-            `INSERT INTO orders (user_id, total_price, address, phone) VALUES (?, ?, ?, ?)`,
-            [user_id, total, address, phone], 
-            function(err) {
-                if (err) return res.status(500).json({ error: err.message });
-                
-                const orderId = this.lastID;
-                
-                const stmt = db.prepare(`
-                    INSERT INTO order_items (order_id, item_id, quantity, price_at_moment) 
-                    VALUES (?, ?, ?, ?)
-                `);
-                
-                cartItems.forEach(item => {
-                    stmt.run(orderId, item.item_id, item.quantity, item.price);
-                });
-                stmt.finalize();
-                
-                db.run(`DELETE FROM carts WHERE user_id = ?`, [user_id]);
-                
-                res.status(201).json({ 
-                    orderId, 
-                    total, 
-                    message: 'Заказ успешно создан' 
-                });
-            }
-        );
+        db.serialize(() => {
+            db.run('BEGIN TRANSACTION');
+            
+            db.run(
+                `INSERT INTO orders (user_id, total_price, address, phone) VALUES (?, ?, ?, ?)`,
+                [user_id, total, address.trim(), phone.trim()],
+                function(err) {
+                    if (err) {
+                        db.run('ROLLBACK');
+                        return res.status(500).json({ error: err.message });
+                    }
+                    
+                    const orderId = this.lastID;
+                    const stmt = db.prepare(`
+                        INSERT INTO order_items (order_id, item_id, quantity, price_at_moment) 
+                        VALUES (?, ?, ?, ?)
+                    `);
+                    
+                    let itemError = null;
+                    cartItems.forEach(item => {
+                        stmt.run(orderId, item.item_id, item.quantity, item.price, (err) => {
+                            if (err) itemError = err;
+                        });
+                    });
+                    
+                    stmt.finalize((err) => {
+                        if (err || itemError) {
+                            db.run('ROLLBACK');
+                            return res.status(500).json({ error: (err || itemError).message });
+                        }
+                        
+                        db.run(`DELETE FROM carts WHERE user_id = ?`, [user_id], (err) => {
+                            if (err) {
+                                db.run('ROLLBACK');
+                                return res.status(500).json({ error: err.message });
+                            }
+                            
+                            db.run('COMMIT', (err) => {
+                                if (err) return res.status(500).json({ error: err.message });
+                                res.status(201).json({ orderId, total, message: 'Заказ успешно создан' });
+                            });
+                        });
+                    });
+                }
+            );
+        });
     });
 });
 
@@ -253,6 +319,33 @@ app.get('/api/orders/my', authenticate, (req, res) => {
     `, [req.user.userId], (err, rows) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json(rows);
+    });
+});
+
+app.get('/api/orders/:id', authenticate, (req, res) => {
+    const orderId = req.params.id;
+    
+    db.get(`SELECT * FROM orders WHERE id = ?`, [orderId], (err, order) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!order) return res.status(404).json({ error: 'Заказ не найден' });
+        
+        const isStaff = ['operator', 'admin', 'courier'].includes(req.user.role);
+        const isOwner = order.user_id === req.user.userId;
+        const isAssignedCourier = req.user.role === 'courier' && order.courier_id === req.user.userId;
+        
+        if (!isOwner && !isStaff && !isAssignedCourier) {
+            return res.status(403).json({ error: 'Нет доступа к этому заказу' });
+        }
+        
+        db.all(`
+            SELECT oi.*, mi.name
+            FROM order_items oi
+            JOIN menu_items mi ON oi.item_id = mi.id
+            WHERE oi.order_id = ?
+        `, [orderId], (err, items) => {
+            if (err) return res.status(500).json({ error: err.message });
+            res.json({ ...order, items });
+        });
     });
 });
 
@@ -307,15 +400,19 @@ app.patch('/api/orders/:id/status', authenticate, requireRole(['operator', 'admi
                     return res.status(404).json({ error: 'Заказ не найден' });
                 }
                 
-                // Считаем и сохраняем начисление курьеру
-                db.get(`SELECT total_price FROM orders WHERE id = ?`, [orderId], (err, order) => {
-                    if (!err && order) {
-                        const percent = calculateCourierCommission(order.total_price);
-                        const earnings = Math.round(order.total_price * percent);
-                        
-                        db.run(`INSERT INTO courier_earnings (order_id, courier_id, order_total, commission_percent, earnings) 
-                                VALUES (?, ?, ?, ?, ?)`,
-                        [orderId, courier_id, order.total_price, Math.round(percent * 100), earnings]);
+                // Считаем и сохраняем начисление курьеру (если ещё не было)
+                db.get(`SELECT id FROM courier_earnings WHERE order_id = ?`, [orderId], (err, existing) => {
+                    if (!err && !existing) {
+                        db.get(`SELECT total_price FROM orders WHERE id = ?`, [orderId], (err, order) => {
+                            if (!err && order) {
+                                const percent = calculateCourierCommission(order.total_price);
+                                const earnings = Math.round(order.total_price * percent);
+                                
+                                db.run(`INSERT OR IGNORE INTO courier_earnings (order_id, courier_id, order_total, commission_percent, earnings) 
+                                        VALUES (?, ?, ?, ?, ?)`,
+                                [orderId, courier_id, order.total_price, Math.round(percent * 100), earnings]);
+                            }
+                        });
                     }
                 });
                 
@@ -431,16 +528,46 @@ app.get('/api/couriers', authenticate, requireRole(['operator', 'admin']), (req,
 app.post('/api/menu', authenticate, requireRole(['admin']), (req, res) => {
     const { category_id, name, description, price, image_url } = req.body;
     
-    if (!name || !price) {
-        return res.status(400).json({ error: 'Название и цена обязательны' });
+    if (!name?.trim() || !validatePrice(parseFloat(price))) {
+        return res.status(400).json({ error: 'Название и положительная цена обязательны' });
     }
     
     db.run(`
         INSERT INTO menu_items (category_id, name, description, price, image_url) 
         VALUES (?, ?, ?, ?, ?)
-    `, [category_id, name, description, price, image_url], function(err) {
+    `, [category_id, name.trim(), description?.trim(), parseFloat(price), image_url], function(err) {
         if (err) return res.status(500).json({ error: err.message });
         res.status(201).json({ id: this.lastID, message: 'Блюдо добавлено' });
+    });
+});
+
+app.patch('/api/menu/:id', authenticate, requireRole(['admin']), (req, res) => {
+    const { category_id, name, description, price, image_url } = req.body;
+    const itemId = req.params.id;
+    
+    if (price !== undefined && !validatePrice(parseFloat(price))) {
+        return res.status(400).json({ error: 'Цена должна быть положительным числом' });
+    }
+    
+    db.run(`
+        UPDATE menu_items SET
+            category_id = COALESCE(?, category_id),
+            name = COALESCE(?, name),
+            description = COALESCE(?, description),
+            price = COALESCE(?, price),
+            image_url = COALESCE(?, image_url)
+        WHERE id = ?
+    `, [
+        category_id ?? null,
+        name?.trim() ?? null,
+        description?.trim() ?? null,
+        price !== undefined ? parseFloat(price) : null,
+        image_url ?? null,
+        itemId
+    ], function(err) {
+        if (err) return res.status(500).json({ error: err.message });
+        if (this.changes === 0) return res.status(404).json({ error: 'Блюдо не найдено' });
+        res.json({ message: 'Блюдо обновлено' });
     });
 });
 
@@ -520,10 +647,14 @@ app.post('/api/staff', authenticate, requireRole(['admin']), (req, res) => {
         return res.status(400).json({ error: 'Неверная роль' });
     }
     
+    if (!validatePhone(phone) || !validatePassword(password) || !name?.trim()) {
+        return res.status(400).json({ error: 'Укажите имя, телефон и пароль (мин. 6 символов)' });
+    }
+    
     const hashedPassword = bcrypt.hashSync(password, 10);
     
     db.run(`INSERT INTO users (phone, password, name, role) VALUES (?, ?, ?, ?)`,
-    [phone, hashedPassword, name, role], function(err) {
+    [phone.trim(), hashedPassword, name.trim(), role], function(err) {
         if (err) {
             if (err.message.includes('UNIQUE constraint failed')) {
                 return res.status(400).json({ error: 'Этот телефон уже зарегистрирован' });
@@ -556,28 +687,35 @@ app.delete('/api/staff/:id', authenticate, requireRole(['admin']), (req, res) =>
 
 // ==================== ЗАГРУЗКА КАРТИНОК ====================
 
-const fs = require('fs');
-const path = require('path');
-
-// Создаём папку для картинок, если её нет
 const imgDir = path.join(__dirname, 'public', 'img');
 if (!fs.existsSync(imgDir)) {
     fs.mkdirSync(imgDir, { recursive: true });
 }
 
-// Загрузка картинки (multipart/form-data)
 app.post('/api/upload', authenticate, requireRole(['admin']), (req, res) => {
-    // Простая загрузка: принимаем base64 или сохраняем файл
-    // Для простоты — сохраняем base64 как файл
     const { image, filename } = req.body;
     
     if (!image || !filename) {
         return res.status(400).json({ error: 'Нужны image (base64) и filename' });
     }
     
-    // Убираем префикс data:image/...;base64,
     const base64Data = image.replace(/^data:image\/\w+;base64,/, '');
+    
+    if (base64Data.length > MAX_IMAGE_SIZE * 1.37) {
+        return res.status(400).json({ error: 'Файл слишком большой (макс. 5 МБ)' });
+    }
+    
+    const allowedExt = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+    const ext = path.extname(filename).toLowerCase();
+    if (!allowedExt.includes(ext)) {
+        return res.status(400).json({ error: 'Допустимы только JPG, PNG, GIF, WEBP' });
+    }
+    
     const buffer = Buffer.from(base64Data, 'base64');
+    
+    if (buffer.length > MAX_IMAGE_SIZE) {
+        return res.status(400).json({ error: 'Файл слишком большой (макс. 5 МБ)' });
+    }
     
     const safeFilename = Date.now() + '_' + filename.replace(/[^a-zA-Z0-9.-]/g, '_');
     const filepath = path.join(imgDir, safeFilename);
